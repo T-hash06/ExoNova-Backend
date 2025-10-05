@@ -1,113 +1,76 @@
-from pydantic import BaseModel, Field, field_validator
-from typing import Dict
+﻿from pydantic import BaseModel, Field, field_validator, model_validator
+from typing import Dict, Optional
 
 
 class TabularPredictionRequest(BaseModel):
-    pl_orbper: float = Field(..., ge=0, le=100, description="Orbital Period (days)")
-    pl_orbsmax: float = Field(..., ge=0, le=0.5, description="Orbit Semi-Major Axis (AU)")
-    pl_eqt: float = Field(..., ge=0, le=4000, description="Equilibrium Temperature (K)")
-    pl_insol: float = Field(..., ge=0, le=7000, description="Insolation Flux (Earth flux)")
-    pl_imppar: float = Field(..., ge=-1, le=2, description="Impact Parameter")
-    pl_trandep: float = Field(..., ge=0, le=6, description="Transit Depth (%)")
-    pl_trandur: float = Field(..., ge=0, le=15, description="Transit Duration (hours)")
-    pl_ratdor: float = Field(..., ge=0, le=100, description="Distance-to-Radius Ratio")
-    pl_ratror: float = Field(..., ge=0, le=1, description="Planet-Star Radius Ratio")
-    st_teff: float = Field(..., ge=3000, le=8000, description="Stellar Temperature (K)")
-    st_rad: float = Field(..., ge=0, le=3, description="Stellar Radius (R☉)")
-    st_mass: float = Field(..., ge=0, le=2, description="Stellar Mass (M☉)")
-    st_met: float = Field(..., ge=-1, le=0.5, description="Stellar Metallicity [Fe/H] (dex)")
-    st_logg: float = Field(..., ge=3, le=5.5, description="Surface Gravity (log(cm/s²))")
-    sy_gmag: float = Field(..., ge=10, le=20, description="Gaia G-band magnitude")
-    sy_rmag: float = Field(..., ge=10, le=19, description="r-band magnitude")
-    sy_imag: float = Field(..., ge=10, le=18, description="i-band magnitude")
-    sy_zmag: float = Field(..., ge=10, le=18, description="z-band magnitude")
-    sy_jmag: float = Field(..., ge=6, le=17, description="2MASS J-band magnitude")
-    sy_hmag: float = Field(..., ge=6, le=17, description="2MASS H-band magnitude")
-    sy_kmag: float = Field(..., ge=6, le=17, description="2MASS K-band magnitude")
+    """
+    Flexible payload: accept up to 21 known fields, require at least 15 non-null.
 
-    @field_validator('*', mode='before')
+    The backend will forward ONLY non-null values to the model. Missing expected
+    features are passed as NaN, and pl_trandur is mapped to pl_trandurh.
+    """
+
+    # Planet/orbital
+    pl_tranmid: Optional[float] = Field(None, description="Transit Midpoint")
+    pl_orbper: Optional[float] = Field(None, ge=0, description="Orbital Period")
+    pl_trandurh: Optional[float] = Field(
+        None, ge=0, description="Transit Duration (hours)"
+    )
+    pl_trandep: Optional[float] = Field(None, ge=0, description="Transit Depth")
+    pl_rade: Optional[float] = Field(None, ge=0, description="Planetary Radius")
+    pl_insol: Optional[float] = Field(None, ge=0, description="Insolation Flux")
+    pl_eqt: Optional[float] = Field(None, ge=0, description="Equilibrium Temperature")
+    # Alternate names from legacy payload
+    pl_trandur: Optional[float] = Field(
+        None, ge=0, description="Transit Duration (hours) [legacy]"
+    )
+    pl_orbsmax: Optional[float] = Field(None, ge=0, description="Semi-major axis")
+    pl_imppar: Optional[float] = Field(None, description="Impact parameter")
+    pl_ratdor: Optional[float] = Field(None, ge=0, description="a/R*")
+    pl_ratror: Optional[float] = Field(None, ge=0, le=1, description="Rp/R*")
+
+    # Stellar
+    st_tmag: Optional[float] = Field(None, description="TESS Magnitude")
+    st_dist: Optional[float] = Field(None, ge=0, description="Distance to Star")
+    st_teff: Optional[float] = Field(None, ge=0, description="Stellar Temperature")
+    st_logg: Optional[float] = Field(None, description="Surface Gravity")
+    st_rad: Optional[float] = Field(None, ge=0, description="Stellar Radius")
+    st_pmra: Optional[float] = Field(None, description="Proper Motion RA")
+    st_pmdec: Optional[float] = Field(None, description="Proper Motion Dec")
+    st_mass: Optional[float] = Field(None, ge=0, description="Stellar Mass")
+    st_met: Optional[float] = Field(None, description="Metallicity")
+
+    # Photometry
+    sy_gmag: Optional[float] = Field(None, ge=0, description="Gaia G mag")
+    sy_rmag: Optional[float] = Field(None, ge=0, description="R mag")
+    sy_imag: Optional[float] = Field(None, ge=0, description="I mag")
+    sy_zmag: Optional[float] = Field(None, ge=0, description="Z mag")
+    sy_jmag: Optional[float] = Field(None, ge=0, description="J mag")
+    sy_hmag: Optional[float] = Field(None, ge=0, description="H mag")
+    sy_kmag: Optional[float] = Field(None, ge=0, description="K mag")
+
+    @field_validator("*", mode="before")
     @classmethod
-    def check_numeric_value(cls, v):
+    def numeric_or_none(cls, v):
         if v is None:
-            raise ValueError("Value cannot be null")
+            return None
         if not isinstance(v, (int, float)):
-            raise ValueError("Value must be numeric")
+            raise ValueError("Value must be numeric or null")
         if not (-1e308 < v < 1e308):
             raise ValueError("Value cannot be infinite")
         return float(v)
 
-    class Config:
-        json_schema_extra = {
-            "example": {
-                "pl_orbper": 10.5,
-                "pl_orbsmax": 0.06,
-                "pl_eqt": 1000,
-                "pl_insol": 500,
-                "pl_imppar": 0.55,
-                "pl_trandep": 0.2,
-                "pl_trandur": 4.0,
-                "pl_ratdor": 15.0,
-                "pl_ratror": 0.1,
-                "st_teff": 5700,
-                "st_rad": 1.0,
-                "st_mass": 0.96,
-                "st_met": -0.05,
-                "st_logg": 4.45,
-                "sy_gmag": 15.0,
-                "sy_rmag": 14.4,
-                "sy_imag": 14.2,
-                "sy_zmag": 14.2,
-                "sy_jmag": 12.8,
-                "sy_hmag": 12.5,
-                "sy_kmag": 12.4
-            }
-        }
+    @model_validator(mode="after")
+    def ensure_minimum_features(self):
+        non_null = sum(1 for v in self.model_dump().values() if v is not None)
+        if non_null < 15:
+            raise ValueError(
+                f"At least 15 non-null fields are required, received {non_null}"
+            )
+        return self
 
 
 class TabularPredictionResponse(BaseModel):
-    predictedValue: float = Field(..., ge=0.0, le=1.0, description="Probability [0.0 - 1.0]")
-    confidence: float = Field(..., ge=0.0, le=1.0, description="Confidence level [0.0 - 1.0]")
-    attributeWeights: Dict[str, float] = Field(
-        ..., 
-        description="Feature importance weights for 15-20 most important features"
-    )
-
-    @field_validator('attributeWeights')
-    @classmethod
-    def validate_weights(cls, v):
-        if not v:
-            raise ValueError("attributeWeights cannot be empty")
-        for key, value in v.items():
-            if not isinstance(value, (int, float)):
-                raise ValueError(f"Weight for {key} must be numeric")
-            if not (-1.0 <= value <= 1.0):
-                raise ValueError(f"Weight for {key} must be between -1.0 and 1.0")
-        return v
-
-    class Config:
-        json_schema_extra = {
-            "example": {
-                "predictedValue": 0.7823,
-                "confidence": 0.8945,
-                "attributeWeights": {
-                    "pl_trandep": 0.234,
-                    "pl_orbper": -0.156,
-                    "pl_trandur": 0.189,
-                    "st_teff": 0.145,
-                    "sy_gmag": -0.178,
-                    "pl_ratror": 0.167,
-                    "st_rad": 0.123,
-                    "pl_insol": 0.112,
-                    "st_mass": 0.098,
-                    "sy_jmag": -0.134,
-                    "sy_hmag": -0.128,
-                    "sy_kmag": -0.125,
-                    "pl_eqt": 0.089,
-                    "st_met": -0.076,
-                    "pl_ratdor": 0.067,
-                    "st_logg": -0.054,
-                    "pl_imppar": -0.043,
-                    "sy_rmag": -0.123
-                }
-            }
-        }
+    predictedValue: float = Field(..., ge=0.0, le=1.0)
+    confidence: float = Field(..., ge=0.0, le=1.0)
+    attributeWeights: Dict[str, float]

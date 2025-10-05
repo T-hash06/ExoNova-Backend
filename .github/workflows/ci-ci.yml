@@ -1,0 +1,71 @@
+name: CI/CD Backend - Azure Container Apps (GHCR)
+
+on:
+  push:
+    branches: [ main ]
+
+env:
+  REGISTRY: ghcr.io
+  IMAGE_NAME: ${{ github.repository_owner }}/${{ github.event.repository.name }}
+  RESOURCE_GROUP: nsac-rg
+  ENVIRONMENT: nsac-env
+  CONTAINER_APP_NAME: backend-nsac
+
+jobs:
+  build-and-deploy:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+
+    steps:
+      # 1️⃣ Descargar código fuente
+      - uses: actions/checkout@v4
+
+      # 2️⃣ Login a GitHub Container Registry
+      - name: Login to GitHub Container Registry
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      # 3️⃣ Preparar contexto de Docker
+      - name: Prepare Docker context
+        run: |
+          mkdir deploy
+          cp -r src models pyproject.toml uv.lock dockerfile deploy/
+
+      # 4️⃣ Convertir nombre del repositorio a minúsculas
+      - name: Set lowercase image name
+        id: image_name
+        run: echo "IMAGE_NAME_LOWER=$(echo '${{ github.repository }}' | tr '[:upper:]' '[:lower:]')" >> $GITHUB_OUTPUT
+
+      # 5️⃣ Construir y subir la imagen a GHCR
+      - name: Build and push image to GHCR
+        uses: docker/build-push-action@v5
+        with:
+          context: ./deploy
+          file: ./deploy/dockerfile
+          push: true
+          tags: |
+            ${{ env.REGISTRY }}/${{ steps.image_name.outputs.IMAGE_NAME_LOWER }}:${{ github.sha }}
+            ${{ env.REGISTRY }}/${{ steps.image_name.outputs.IMAGE_NAME_LOWER }}:latest
+
+      # 6️⃣ Login en Azure
+      - name: Login to Azure
+        uses: azure/login@v1
+        with:
+          creds: ${{ secrets.AZURE_CREDENTIALS }}
+
+      # 7️⃣ Desplegar en Azure Container Apps (usando imagen GHCR)
+      - name: Deploy to Azure Container Apps
+        uses: azure/container-apps-deploy-action@v1
+        with:
+          resourceGroup: ${{ env.RESOURCE_GROUP }}
+          containerAppName: ${{ env.CONTAINER_APP_NAME }}
+          imageToDeploy: ${{ env.REGISTRY }}/${{ steps.image_name.outputs.IMAGE_NAME_LOWER }}:${{ github.sha }}
+          registryUrl: ${{ env.REGISTRY }}
+          registryUsername: ${{ github.actor }}
+          registryPassword: ${{ secrets.GITHUB_TOKEN }}
+          targetPort: 8000
